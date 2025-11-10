@@ -51,7 +51,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
               <Plane className="w-5 h-5 text-white" />
             </div>
             <h1 className="text-lg font-semibold text-neutral-900 dark:text-white">
-              旅行助手
+              路路❤️蓉蓉的旅行助手
             </h1>
           </div>
           <button
