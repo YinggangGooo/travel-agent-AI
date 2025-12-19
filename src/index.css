@@ -171,6 +171,15 @@
   }
 }
 
+/* Scrollbar utils */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
 @layer utilities {
   /* Reduced Motion Support */
   @media (prefers-reduced-motion: reduce) {

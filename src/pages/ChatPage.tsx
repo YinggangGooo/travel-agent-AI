@@ -75,7 +75,7 @@ const ChatPage: React.FC = () => {
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
         {currentChat.messages.length === 0 ? (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-center justify-center h-full text-center"
@@ -118,34 +118,17 @@ const ChatPage: React.FC = () => {
       <div className="p-4 border-t border-white/15">
         <div className="glass-card p-4 rounded-2xl">
           <div className="flex items-end space-x-3">
-            {/* Attachment Button */}
-            <div className="flex space-x-1">
-              <button
-                onClick={() => setShowImageUploader(!showImageUploader)}
-                className="p-2 rounded-lg glass-light border border-white/20 hover:bg-white/20 transition-colors"
-                title="上传图片"
-              >
-                <ImageIcon className="w-5 h-5" />
-              </button>
-              <button
-                className="p-2 rounded-lg glass-light border border-white/20 hover:bg-white/20 transition-colors"
-                title="发送位置"
-              >
-                <MapPin className="w-5 h-5" />
-              </button>
-            </div>
-
             {/* Text Input */}
-            <div className="flex-1 relative">
+            <div className="flex-1 relative bg-white/5 rounded-2xl border border-white/10 focus-within:border-primary/50 focus-within:bg-white/10 transition-all duration-200">
               <textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="输入您的旅行问题..."
-                className="w-full px-4 py-3 glass-input resize-none rounded-xl text-neutral-900 dark:text-white placeholder-neutral-500 focus:outline-none"
+                className="w-full px-4 py-3 bg-transparent resize-none rounded-2xl text-neutral-900 dark:text-white placeholder-neutral-500 focus:outline-none max-h-[200px] overflow-y-auto scrollbar-hide"
                 rows={1}
-                style={{ minHeight: '48px', maxHeight: '200px' }}
+                style={{ minHeight: '48px' }}
               />
             </div>
 
@@ -153,15 +136,15 @@ const ChatPage: React.FC = () => {
             <button
               onClick={handleSend}
               disabled={!input.trim()}
-              className={`p-3 rounded-xl transition-all ${
-                input.trim()
-                  ? 'btn-primary'
-                  : 'glass-light border border-white/20 opacity-50 cursor-not-allowed'
-              }`}
+              className={`p-3 rounded-xl transition-all duration-200 flex items-center justify-center shrink-0 ${input.trim()
+                  ? 'bg-primary text-white shadow-lg shadow-primary/20 hover:scale-105 active:scale-95'
+                  : 'bg-white/10 text-neutral-400 cursor-not-allowed hidden'
+                }`}
             >
               <Send className="w-5 h-5" />
             </button>
           </div>
+
 
           {/* Image Uploader */}
           {showImageUploader && (

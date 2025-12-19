@@ -60,6 +60,7 @@ interface ChatContextType {
   sendMessage: (content: string, images?: string[]) => void;
   toggleFavorite: (chatId: string) => void;
   deleteChat: (chatId: string) => void;
+  renameChat: (chatId: string, newTitle: string) => void; // Added renameChat
   searchChats: (query: string) => Chat[];
 }
 
@@ -294,6 +295,18 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     }
   };
 
+  const renameChat = (chatId: string, newTitle: string) => {
+    setChats(prev =>
+      prev.map(chat =>
+        chat.id === chatId ? { ...chat, title: newTitle } : chat
+      )
+    );
+    // If renaming current chat, update it too
+    if (currentChat?.id === chatId) {
+      setCurrentChat(prev => prev ? { ...prev, title: newTitle } : null);
+    }
+  };
+
   // Load saved chats from localStorage
   useEffect(() => {
     try {
@@ -345,6 +358,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       sendMessage,
       toggleFavorite,
       deleteChat,
+      renameChat, // Added
       searchChats,
     }}>
       {children}

@@ -1,60 +1,86 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { 
-  MessageSquare, 
-  History, 
-  Settings, 
-  Plus, 
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  MessageSquare,
+  History,
+  Settings,
+  Plus,
   Star,
   Moon,
   Sun,
   Plane,
-  ChevronLeft,  // 新增图标
-  ChevronRight  // 新增图标
+  ChevronLeft,
+  ChevronRight,
+  Edit2,
+  Check,
+  X
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useChat } from '../../contexts/ChatContext';
 
 interface SidebarProps {
   onClose?: () => void;
-  // 新增：接收外部传入的状态和控制函数
   isOpen?: boolean;
   onToggle?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ 
-  onClose, 
-  // 默认为 true，保证移动端调用时不会出错（移动端没有 toggle 逻辑，默认就是打开展示）
-  isOpen = true, 
-  onToggle 
+const Sidebar: React.FC<SidebarProps> = ({
+  onClose,
+  isOpen = true,
+  onToggle
 }) => {
   const location = useLocation();
   const { isDark, toggleTheme } = useTheme();
-  const { chats, currentChat, selectChat, createNewChat, toggleFavorite, deleteChat } = useChat();
+  // Add renameChat to destructuring
+  const { chats, currentChat, selectChat, createNewChat, toggleFavorite, deleteChat, renameChat } = useChat();
+
+  const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   const isActive = (path: string) => location.pathname === path;
 
+  // Cleaned up nav items (Removed 'New Chat' and 'Settings' as they are handled elsewhere)
   const navItems = [
-    { path: '/chat', icon: MessageSquare, label: '新对话' },
     { path: '/history', icon: History, label: '历史记录' },
-    { path: '/settings', icon: Settings, label: '设置' },
   ];
+
+  useEffect(() => {
+    if (editingChatId && editInputRef.current) {
+      editInputRef.current.focus();
+    }
+  }, [editingChatId]);
 
   const handleLinkClick = () => {
     if (onClose) onClose();
   };
 
+  const startEditing = (chatId: string, currentTitle: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingChatId(chatId);
+    setEditTitle(currentTitle);
+  };
+
+  const saveTitle = (chatId: string) => {
+    if (editTitle.trim()) {
+      renameChat(chatId, editTitle.trim());
+    }
+    setEditingChatId(null);
+  };
+
+  const cancelEditing = () => {
+    setEditingChatId(null);
+    setEditTitle('');
+  };
+
   return (
-    <motion.div 
-      // 修改：根据 isOpen 属性决定 X 轴位置
-      // 宽度是 w-80 (320px)，所以隐藏时移动 -320
+    <motion.div
       animate={{ x: isOpen ? 0 : -320 }}
-      initial={false} // 防止刷新页面时出现不必要的初始动画
+      initial={false}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
-      className="fixed inset-y-0 left-0 z-40 w-80 glass-card border-r border-white/15"
+      className="fixed inset-y-0 left-0 z-40 w-80 glass-card border-r border-white/15 flex flex-col"
     >
-      {/* 新增：侧边栏切换按钮 (仅当提供了 onToggle 时显示，通常是在桌面端) */}
       {onToggle && (
         <button
           onClick={onToggle}
@@ -67,96 +93,125 @@ const Sidebar: React.FC<SidebarProps> = ({
         </button>
       )}
 
-      <div className="flex h-full flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
-          <div className="flex items-center space-x-3 min-w-0">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center flex-shrink-0">
-              <Plane className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="text-lg font-semibold text-neutral-900 dark:text-white truncate">
-              旅行助手
-            </h1>
+      {/* Header */}
+      <div className="flex items-center justify-between p-6 border-b border-white/10 shrink-0">
+        <div className="flex items-center space-x-3 min-w-0">
+          <div className="w-10 h-10 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+            <Plane className="w-6 h-6 text-white" />
           </div>
-          <button
-            onClick={toggleTheme}
-            className="p-2 rounded-lg glass-light border border-white/20 hover:bg-white/20 transition-colors flex-shrink-0"
-          >
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
+          <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-neutral-900 to-neutral-600 dark:from-white dark:to-neutral-300 truncate">
+            旅行助手
+          </h1>
         </div>
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-xl glass-light border border-white/20 hover:bg-white/20 transition-all hover:scale-105 active:scale-95"
+        >
+          {isDark ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-slate-700" />}
+        </button>
+      </div>
 
-        {/* New Chat Button */}
-        <div className="p-4">
-          <button
-            onClick={() => {
-              createNewChat();
-              // 如果当前是折叠状态，点击新建时自动展开
-              if (!isOpen && onToggle) onToggle();
-              handleLinkClick();
-            }}
-            className="w-full btn-secondary flex items-center justify-center space-x-2 py-3"
-          >
-            <Plus className="w-4 h-4" />
-            <span>新建对话</span>
-          </button>
-        </div>
+      {/* New Chat Button */}
+      <div className="p-4 shrink-0">
+        <button
+          onClick={() => {
+            createNewChat();
+            if (!isOpen && onToggle) onToggle();
+            handleLinkClick();
+          }}
+          className="w-full btn-primary flex items-center justify-center space-x-2 py-3.5 shadow-lg shadow-primary/20 group"
+        >
+          <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform duration-200" />
+          <span className="font-medium">开始新对话</span>
+        </button>
+      </div>
 
-        {/* Navigation */}
-        <nav className="px-4 space-y-2">
-          {navItems.map((item) => (
-            <Link
-              key={item.path}
-              to={item.path}
-              onClick={handleLinkClick}
-              className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors ${
-                isActive(item.path)
-                  ? 'bg-primary/10 text-primary border border-primary/20'
-                  : 'text-neutral-700 dark:text-neutral-300 hover:bg-white/10'
+      {/* Chat List */}
+      <div className="flex-1 overflow-y-auto px-4 space-y-2 scrollbar-thin pb-4">
+        {/* Navigation Items */}
+        {navItems.map((item) => (
+          <Link
+            key={item.path}
+            to={item.path}
+            onClick={handleLinkClick}
+            className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${isActive(item.path)
+                ? 'bg-white/10 text-primary font-medium border border-primary/20'
+                : 'text-neutral-600 dark:text-neutral-400 hover:bg-white/5 hover:text-neutral-900 dark:hover:text-white'
               }`}
-            >
-              <item.icon className="w-5 h-5 flex-shrink-0" />
-              <span className="font-medium truncate">{item.label}</span>
-            </Link>
-          ))}
-        </nav>
+          >
+            <item.icon className="w-5 h-5" />
+            <span>{item.label}</span>
+          </Link>
+        ))}
 
-        {/* Chat History */}
-        <div className="flex-1 px-4 pt-6 overflow-hidden">
-          <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3 truncate">
-            对话历史
+        <div className="pt-4 pb-2">
+          <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider px-2 mb-2">
+            近期对话
           </h3>
-          <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-thin">
-            {chats.slice(0, 10).map((chat) => (
+          <div className="space-y-1">
+            {chats.slice(0, 15).map((chat) => (
               <div
                 key={chat.id}
-                className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
-                  currentChat?.id === chat.id
-                    ? 'bg-primary/10 text-primary border border-primary/20'
-                    : 'text-neutral-700 dark:text-neutral-300 hover:bg-white/10'
-                }`}
                 onClick={() => {
                   selectChat(chat.id);
-                  // 点击历史记录自动展开侧边栏
                   if (!isOpen && onToggle) onToggle();
                   handleLinkClick();
                 }}
+                className={`group relative flex items-center p-3 rounded-xl cursor-pointer transition-all border border-transparent ${currentChat?.id === chat.id
+                    ? 'bg-primary/5 border-primary/10 shadow-sm'
+                    : 'hover:bg-white/5 hover:border-white/10'
+                  }`}
               >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{chat.title}</p>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                    {new Date(chat.updatedAt).toLocaleDateString()}
-                  </p>
+                <MessageSquare className={`w-4 h-4 mr-3 shrink-0 ${currentChat?.id === chat.id ? 'text-primary' : 'text-neutral-400'
+                  }`} />
+
+                <div className="flex-1 min-w-0 mr-2">
+                  {editingChatId === chat.id ? (
+                    <div className="flex items-center space-x-1" onClick={e => e.stopPropagation()}>
+                      <input
+                        ref={editInputRef}
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveTitle(chat.id);
+                          if (e.key === 'Escape') cancelEditing();
+                        }}
+                        onBlur={() => saveTitle(chat.id)}
+                        className="w-full bg-white/10 border border-primary/30 rounded px-1 py-0.5 text-sm text-neutral-900 dark:text-white focus:outline-none"
+                      />
+                    </div>
+                  ) : (
+                    <p
+                      className={`text-sm truncate ${currentChat?.id === chat.id ? 'text-neutral-900 dark:text-white font-medium' : 'text-neutral-600 dark:text-neutral-400'
+                        }`}
+                      onDoubleClick={(e) => startEditing(chat.id, chat.title, e)}
+                      title="双击重命名"
+                    >
+                      {chat.title}
+                    </p>
+                  )}
                 </div>
-                <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+
+                {/* Actions */}
+                <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-sm rounded-lg px-1">
+                  {!editingChatId && (
+                    <button
+                      onClick={(e) => startEditing(chat.id, chat.title, e)}
+                      className="p-1 hover:text-primary transition-colors text-neutral-400"
+                      title="重命名"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleFavorite(chat.id);
                     }}
-                    className={`p-1 rounded ${
-                      chat.isFavorite ? 'text-yellow-500' : 'text-neutral-400'
-                    }`}
+                    className={`p-1 transition-colors ${chat.isFavorite ? 'text-yellow-400' : 'text-neutral-400 hover:text-yellow-400'
+                      }`}
+                    title={chat.isFavorite ? "取消收藏" : "收藏"}
                   >
                     <Star className="w-3 h-3" fill={chat.isFavorite ? 'currentColor' : 'none'} />
                   </button>
@@ -165,27 +220,30 @@ const Sidebar: React.FC<SidebarProps> = ({
                       e.stopPropagation();
                       deleteChat(chat.id);
                     }}
-                    className="p-1 rounded text-neutral-400 hover:text-red-500"
+                    className="p-1 hover:text-red-500 transition-colors text-neutral-400"
+                    title="删除"
                   >
-                    ×
+                    <X className="w-3 h-3" />
                   </button>
                 </div>
               </div>
             ))}
           </div>
         </div>
+      </div>
 
-        {/* Settings at Bottom */}
-        <div className="p-4 border-t border-white/10">
-          <Link
-            to="/settings"
-            onClick={handleLinkClick}
-            className="flex items-center space-x-3 px-3 py-2.5 rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-white/10 transition-colors"
-          >
-            <Settings className="w-5 h-5 flex-shrink-0" />
-            <span className="font-medium truncate">设置</span>
-          </Link>
-        </div>
+      {/* Bottom Settings */}
+      <div className="p-4 border-t border-white/10 shrink-0">
+        <Link
+          to="/settings"
+          onClick={handleLinkClick}
+          className="flex items-center space-x-3 px-4 py-3 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-white/10 hover:text-neutral-900 dark:hover:text-white transition-all group"
+        >
+          <div className="p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 group-hover:bg-primary/10 transition-colors">
+            <Settings className="w-5 h-5 group-hover:text-primary transition-colors" />
+          </div>
+          <span className="font-medium">全局设置</span>
+        </Link>
       </div>
     </motion.div>
   );

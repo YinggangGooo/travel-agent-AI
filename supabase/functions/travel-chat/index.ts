@@ -4,7 +4,7 @@ const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 const MODEL_NAME = 'deepseek-chat';
 
 // Optional: Uncomment and set SERPER_API_KEY as a Supabase secret for real search
-// const SERPER_API_URL = 'https://google.serper.dev/search';
+const SERPER_API_URL = 'https://google.serper.dev/search';
 
 const tools = [
     {
@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
         const apiKey = Deno.env.get('DEEPSEEK_API_KEY');
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-        // const serperKey = Deno.env.get('SERPER_API_KEY'); // Uncomment for real search
+        const serperKey = Deno.env.get('SERPER_API_KEY'); // Uncomment for real search
 
         if (!apiKey || !supabaseUrl || !supabaseServiceKey) {
             throw new Error('Missing environment variables');
@@ -118,9 +118,10 @@ CRITICAL RULES:
                     const args = JSON.parse(toolCall.function.arguments);
                     toolsOutput = `🔍 正在搜索: ${args.query}\n\n`;
 
+
                     let searchResults = '';
 
-                    /* REAL SEARCH (Uncomment if you have SERPER_API_KEY)
+                    // REAL SEARCH - Using Serper API
                     try {
                         const serperResponse = await fetch(SERPER_API_URL, {
                             method: 'POST',
@@ -135,7 +136,8 @@ CRITICAL RULES:
                     } catch (e) {
                         console.error('Search failed:', e);
                     }
-                    */
+
+
 
                     // MOCK SEARCH (Remove when using real search)
                     if (!searchResults) {
