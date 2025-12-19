@@ -1,27 +1,23 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
-// Configuration
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 const MODEL_NAME = 'deepseek-chat';
 
-// Tool Definition
+// Optional: Uncomment and set SERPER_API_KEY as a Supabase secret for real search
+// const SERPER_API_URL = 'https://google.serper.dev/search';
+
 const tools = [
     {
         type: 'function',
         function: {
             name: 'search_travel_info',
-            description: 'Search for travel information, guides, and reviews primarily from Xiaohongshu (Little Red Book) and other travel sites.',
+            description: 'Search for travel information from the web (Xiaohongshu, blogs, reviews).',
             parameters: {
                 type: 'object',
                 properties: {
                     query: {
                         type: 'string',
-                        description: 'The search query optimized for finding travel guides (e.g., "Kyoto food guide xiaohongshu")'
-                    },
-                    platform: {
-                        type: 'string',
-                        enum: ['xiaohongshu', 'general'],
-                        description: 'Preferred platform for information.'
+                        description: 'Search query in Chinese or English'
                     }
                 },
                 required: ['query']
@@ -34,7 +30,7 @@ Deno.serve(async (req) => {
     const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-        'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
     };
 
     if (req.method === 'OPTIONS') {
@@ -45,72 +41,54 @@ Deno.serve(async (req) => {
         const apiKey = Deno.env.get('DEEPSEEK_API_KEY');
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        // const serperKey = Deno.env.get('SERPER_API_KEY'); // Uncomment for real search
 
         if (!apiKey || !supabaseUrl || !supabaseServiceKey) {
-            throw new Error('Missing environment variables (DEEPSEEK_API_KEY, SUPABASE_URL, or SUPABASE_SERVICE_ROLE_KEY)');
+            throw new Error('Missing environment variables');
         }
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
-        const { message, stream = false, history = [], userId } = await req.json();
+        const { message, userId, history = [] } = await req.json();
 
-        // 1. Memory Retrieval (Semantic Search)
+        // 1. Memory Retrieval (Simplified: text search, no embeddings)
         let memoryContext = '';
         if (userId) {
             try {
-                // Generate embedding for the new message
-                const embeddingResponse = await fetch('https://api.deepseek.com/embeddings', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${apiKey}`
-                    },
-                    body: JSON.stringify({
-                        model: "deepseek-embedding", // Assuming DeepSeek has an embedding model, otherwise use OpenAI or skip
-                        input: message
-                    })
-                });
+                const { data: memories } = await supabase
+                    .from('user_memories')
+                    .select('content')
+                    .eq('user_id', userId)
+                    .order('created_at', { ascending: false })
+                    .limit(5);
 
-                // Note: If DeepSeek doesn't support embeddings standardly, we might skip this or use a different provider.
-                // For robustness in this demo, we will try retrieval if embedding works, else skip.
-                if (embeddingResponse.ok) {
-                    const embeddingData = await embeddingResponse.json();
-                    const embedding = embeddingData.data?.[0]?.embedding;
-
-                    if (embedding) {
-                        const { data: memories } = await supabase.rpc('match_memories', {
-                            query_embedding: embedding,
-                            match_threshold: 0.7,
-                            match_count: 5,
-                            p_user_id: userId
-                        });
-
-                        if (memories && memories.length > 0) {
-                            memoryContext = `\nRelevant User Memories:\n${memories.map((m: any) => `- ${m.content}`).join('\n')}\n`;
-                        }
-                    }
+                if (memories && memories.length > 0) {
+                    memoryContext = `\n===User Profile (from previous conversations)===\n${memories.map(m => m.content).join('\n')}\n========\n`;
                 }
             } catch (e) {
                 console.warn('Memory retrieval failed:', e);
             }
         }
 
-        const systemPrompt = `You are an expert AI Travel Agent specializing in creating personalized travel plans.
-    You have access to real-time travel information and user memories.
-    
-    ${memoryContext ? memoryContext : 'No previous memories found.'}
-    
-    If the user asks for specific recommendations (food, spots, guides), use the 'search_travel_info' tool to find "Xiaohongshu" style reviews.
-    Always reply in the user's preferred language (likely Chinese).
-    IMPORTANT: Do not output internal thought tags or XML-like thinking process. Just output the final response.
-    `;
+        const systemPrompt = `You are an expert AI Travel Agent. You speak fluently in Chinese and English.
+
+${memoryContext}
+
+When the user asks for recommendations or travel info, use the 'search_travel_info' tool ONCE to find real data.
+After receiving search results, synthesize them into a helpful answer.
+
+CRITICAL RULES:
+1. NEVER call tools more than once per response
+2. NEVER output tool call syntax like <｜DSML｜> tags
+3. After using a tool, produce a final human-readable answer based on the tool results
+4. If the user tells you personal info (name, preferences), acknowledge it naturally`;
 
         const messages = [
             { role: 'system', content: systemPrompt },
-            ...history,
+            ...history.slice(-6), // Last 3 turns
             { role: 'user', content: message }
         ];
 
-        // 2. Call LLM (First Pass)
+        // 2. First LLM Call (with tools)
         const initialResponse = await fetch(DEEPSEEK_API_URL, {
             method: 'POST',
             headers: {
@@ -121,80 +99,80 @@ Deno.serve(async (req) => {
                 model: MODEL_NAME,
                 messages,
                 tools,
-                stream: false // First call is not streamed to handle tool logic easier
+                stream: false
             })
         });
 
         const initialData = await initialResponse.json();
         const firstMessage = initialData.choices?.[0]?.message;
 
-        // 3. Handle Tool Calls
         let finalMessages = [...messages];
         let toolsOutput = '';
 
+        // 3. Execute Tools (if requested)
         if (firstMessage?.tool_calls?.length > 0) {
             finalMessages.push(firstMessage);
 
             for (const toolCall of firstMessage.tool_calls) {
                 if (toolCall.function.name === 'search_travel_info') {
                     const args = JSON.parse(toolCall.function.arguments);
-                    toolsOutput += `🔍 Searching ${args.platform || 'general'} for: ${args.query}\n`;
+                    toolsOutput = `🔍 正在搜索: ${args.query}\n\n`;
 
-                    // MOCK IMPLEMENTATION OF SEARCH
-                    // In a real app, you would call a Serper/Google API here.
-                    const mockResult = JSON.stringify({
-                        results: [
-                            { title: `Top things to do in ${args.query}`, snippet: "Found great guides on Xiaohongshu about local food and hidden gems." },
-                            { title: "Travel Guide 2024", snippet: "Latest trends and tips for travelers." }
-                        ]
-                    });
+                    let searchResults = '';
+
+                    /* REAL SEARCH (Uncomment if you have SERPER_API_KEY)
+                    try {
+                        const serperResponse = await fetch(SERPER_API_URL, {
+                            method: 'POST',
+                            headers: {
+                                'X-API-KEY': serperKey!,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ q: args.query, gl: 'cn', hl: 'zh-cn' })
+                        });
+                        const serperData = await serperResponse.json();
+                        searchResults = JSON.stringify(serperData.organic?.slice(0, 5) || []);
+                    } catch (e) {
+                        console.error('Search failed:', e);
+                    }
+                    */
+
+                    // MOCK SEARCH (Remove when using real search)
+                    if (!searchResults) {
+                        searchResults = JSON.stringify([
+                            { title: "小红书 - 成都旅游攻略", snippet: "2024最全成都美食地图，宽窄巷子必打卡，火锅推荐..." },
+                            { title: "成都三日游完美攻略", snippet: "Day1: 锦里-武侯祠; Day2: 大熊猫基地; Day3: 春熙路购物..." },
+                            { title: "本地人推荐的成都小吃", snippet: "钟水饺、龙抄手、夫妻肺片、担担面..." }
+                        ]);
+                    }
 
                     finalMessages.push({
                         role: 'tool',
                         tool_call_id: toolCall.id,
-                        content: mockResult
+                        content: searchResults
                     });
                 }
             }
         }
 
-        // 4. Save Memory (Before Streaming Response to guarantee execution)
-        if (userId && message.length > 2) {
+        // 4. Save Memory (before final response)
+        if (userId && message.trim().length > 2) {
             try {
-                // Generate embedding
-                const embeddingRes = await fetch('https://api.deepseek.com/embeddings', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${apiKey}`
-                    },
-                    body: JSON.stringify({
-                        model: "deepseek-embedding",
-                        input: message
-                    })
-                });
-
-                if (embeddingRes.ok) {
-                    const data = await embeddingRes.json();
-                    const embedding = data.data?.[0]?.embedding;
-
-                    if (embedding) {
-                        // We do not await this insert to prevent blocking the UI *too* much, 
-                        // but we start it before the stream loop.
-                        // Actually, to be safe, we await it. It's better to be 200ms slower than broken.
-                        await supabase.from('user_memories').insert({
-                            user_id: userId,
-                            content: message,
-                            embedding: embedding
-                        });
-                    }
+                // Check if this looks like personal info
+                const isPersonalInfo = /我是|我叫|我喜欢|我爱|我的名字|my name|I am|I like|I love/i.test(message);
+                if (isPersonalInfo) {
+                    await supabase.from('user_memories').insert({
+                        user_id: userId,
+                        content: message,
+                        embedding: null // No embeddings needed
+                    });
                 }
             } catch (e) {
                 console.error('Memory save failed:', e);
             }
         }
 
-        // 5. Final Generation (Streaming)
+        // 5. Final LLM Call (NO TOOLS - prevents recursion)
         const finalResponse = await fetch(DEEPSEEK_API_URL, {
             method: 'POST',
             headers: {
@@ -205,11 +183,11 @@ Deno.serve(async (req) => {
                 model: MODEL_NAME,
                 messages: finalMessages,
                 stream: true
-                // tools removed here to prevent recursive loop
+                // CRITICAL: No 'tools' parameter here!
             })
         });
 
-        // 6. Stream Handling to Frontend
+        // 6. Stream Response
         const reader = finalResponse.body?.getReader();
         if (!reader) throw new Error('No reader');
 
@@ -217,7 +195,6 @@ Deno.serve(async (req) => {
             async start(controller) {
                 const encoder = new TextEncoder();
 
-                // Send tool usage info first if any
                 if (toolsOutput) {
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'tools', content: toolsOutput })}\n\n`));
                 }
@@ -238,7 +215,7 @@ Deno.serve(async (req) => {
                                     controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'content', content })}\n\n`));
                                 }
                             } catch (e) {
-                                // ignore parse errors
+                                // ignore
                             }
                         }
                     }

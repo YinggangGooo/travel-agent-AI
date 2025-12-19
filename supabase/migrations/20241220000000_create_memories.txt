@@ -1,20 +1,16 @@
--- Enable the pgvector extension to work with embedding vectors
-create extension if not exists vector;
-
--- Create a table to store user memories
+-- Simplified memory table (no vectors needed)
 create table if not exists user_memories (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users(id) on delete cascade not null,
   content text not null,
-  embedding vector(1536), -- Assuming OpenAI/DeepSeek standard embedding size. Adjust if needed.
+  embedding vector(1536), -- Kept for compatibility but not used
   metadata jsonb default '{}'::jsonb,
   created_at timestamptz default now()
 );
 
--- Enable Row Level Security (RLS)
+-- Enable RLS
 alter table user_memories enable row level security;
 
--- Create a policy that allows users to only see their own memories
 create policy "Users can see their own memories"
 on user_memories for select
 using (auth.uid() = user_id);
@@ -23,31 +19,3 @@ create policy "Users can insert their own memories"
 on user_memories for insert
 with check (auth.uid() = user_id);
 
--- Create a function to search for memories
-create or replace function match_memories (
-  query_embedding vector(1536),
-  match_threshold float,
-  match_count int,
-  p_user_id uuid
-)
-returns table (
-  id uuid,
-  content text,
-  similarity float
-)
-language plpgsql
-as $$
-begin
-  return query(
-    select
-      user_memories.id,
-      user_memories.content,
-      1 - (user_memories.embedding <=> query_embedding) as similarity
-    from user_memories
-    where 1 - (user_memories.embedding <=> query_embedding) > match_threshold
-    and user_memories.user_id = p_user_id
-    order by user_memories.embedding <=> query_embedding
-    limit match_count
-  );
-end;
-$$;

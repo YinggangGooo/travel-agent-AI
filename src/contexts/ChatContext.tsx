@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { WeatherService, CurrencyService, TimezoneService, DestinationsService, AIService } from '../services/api';
+import { useAuth } from './AuthContext';
 
 export interface Message {
   id: string;
@@ -77,6 +78,7 @@ interface ChatProviderProps {
 }
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
+  const { user } = useAuth(); // Get current user for memory
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChat, setCurrentChat] = useState<Chat | null>(null);
   const [isTyping, setIsTyping] = useState(false);
@@ -91,7 +93,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       isFavorite: false,
       tags: [],
     };
-    
+
     setChats(prev => [newChat, ...prev]);
     setCurrentChat(newChat);
     return newChat.id;
@@ -127,14 +129,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         messages: [...prev.messages, userMessage],
         updatedAt: new Date(),
       };
-      
+
       // Update chats list
-      setChats(prevChats => 
-        prevChats.map(chat => 
+      setChats(prevChats =>
+        prevChats.map(chat =>
           chat.id === prev.id ? updatedChat : chat
         )
       );
-      
+
       return updatedChat;
     });
 
@@ -164,15 +166,26 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         };
       });
 
+      // Build context for memory and history
+      const conversationHistory = currentChat?.messages.slice(-10).map(msg => ({
+        role: msg.type === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      })) || [];
+
+      const context = {
+        userId: user?.id,
+        history: conversationHistory
+      };
+
       // Generate AI response with streaming
       await AIService.generateResponse(
         content,
-        undefined,
+        context,
         true, // Enable streaming
         (chunk: string) => {
           // Update message content as chunks arrive
           streamedContent += chunk;
-          
+
           setCurrentChat(prev => {
             if (!prev) return null;
             const updatedMessages = prev.messages.map(msg =>
@@ -180,20 +193,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
                 ? { ...msg, content: streamedContent, status: 'sent' as const }
                 : msg
             );
-            
+
             const updatedChat = {
               ...prev,
               messages: updatedMessages,
               updatedAt: new Date(),
               title: prev.messages.length <= 1 ? content.substring(0, 30) + (content.length > 30 ? '...' : '') : prev.title,
             };
-            
-            setChats(prevChats => 
-              prevChats.map(chat => 
+
+            setChats(prevChats =>
+              prevChats.map(chat =>
                 chat.id === prev.id ? updatedChat : chat
               )
             );
-            
+
             return updatedChat;
           });
         }
@@ -201,41 +214,41 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
       // Check if message needs weather or destination data
       const aiResponse = await generateSmartResponse(content);
-      
+
       if (aiResponse.weather || aiResponse.destinations) {
         // Update with additional data
         setCurrentChat(prev => {
           if (!prev) return null;
           const updatedMessages = prev.messages.map(msg =>
             msg.id === aiMessageId
-              ? { 
-                  ...msg, 
-                  weather: aiResponse.weather,
-                  destinations: aiResponse.destinations,
-                  status: 'sent' as const 
-                }
+              ? {
+                ...msg,
+                weather: aiResponse.weather,
+                destinations: aiResponse.destinations,
+                status: 'sent' as const
+              }
               : msg
           );
-          
+
           const updatedChat = {
             ...prev,
             messages: updatedMessages,
             updatedAt: new Date(),
           };
-          
-          setChats(prevChats => 
-            prevChats.map(chat => 
+
+          setChats(prevChats =>
+            prevChats.map(chat =>
               chat.id === prev.id ? updatedChat : chat
             )
           );
-          
+
           return updatedChat;
         });
       }
-      
+
     } catch (error) {
       console.error('Error generating AI response:', error);
-      
+
       // Fallback response
       const fallbackMessage: Message = {
         id: `ai-msg-${Date.now()}`,
@@ -252,13 +265,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           messages: [...prev.messages, fallbackMessage],
           updatedAt: new Date(),
         };
-        
-        setChats(prevChats => 
-          prevChats.map(chat => 
+
+        setChats(prevChats =>
+          prevChats.map(chat =>
             chat.id === prev.id ? updatedChat : chat
           )
         );
-        
+
         return updatedChat;
       });
     } finally {
@@ -267,8 +280,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   };
 
   const toggleFavorite = (chatId: string) => {
-    setChats(prev => 
-      prev.map(chat => 
+    setChats(prev =>
+      prev.map(chat =>
         chat.id === chatId ? { ...chat, isFavorite: !chat.isFavorite } : chat
       )
     );
@@ -315,8 +328,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   const searchChats = (query: string): Chat[] => {
     if (!query.trim()) return chats;
-    
-    return chats.filter(chat => 
+
+    return chats.filter(chat =>
       chat.title.toLowerCase().includes(query.toLowerCase()) ||
       chat.messages.some(msg => msg.content.toLowerCase().includes(query.toLowerCase()))
     );
@@ -342,16 +355,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 // Smart response generator with real API integration
 const generateSmartResponse = async (userMessage: string) => {
   const message = userMessage.toLowerCase();
-  
+
   // Weather queries
   const weatherMatch = message.match(/(.*城市.*天气|.*天气.*查询|.*下雨.*|.*晴天.*|.*今天.*天气|明天.*天气)/);
   if (weatherMatch) {
     const cityMatch = userMessage.match(/(?:北京|上海|广州|深圳|杭州|南京|武汉|成都|西安|重庆|天津|青岛|大连|厦门|昆明|贵阳|拉萨|银川|西宁|乌鲁木齐|呼和浩特|南宁|海口|福州|合肥|南昌|郑州|太原|长春|沈阳|哈尔滨|石家庄|济南|兰州|合肥)/) || userMessage.match(/for (\w+)/);
-    
+
     if (cityMatch) {
       const city = cityMatch[0].replace('for ', '');
       const weather = await WeatherService.getCurrentWeather(city);
-      
+
       if (weather) {
         return {
           content: `为您查询到${weather.location}的天气信息：当前温度 ${weather.temperature}°C，${weather.condition}，湿度 ${weather.humidity}%，风速 ${weather.windSpeed} km/h。未来几天都有不错的天气，建议您根据天气情况安排出行！`,
@@ -361,7 +374,7 @@ const generateSmartResponse = async (userMessage: string) => {
         };
       }
     }
-    
+
     return {
       content: '请告诉我您想查询哪个城市的天气信息？例如"北京天气"或"上海今天天气如何？"',
       images: undefined,
@@ -369,12 +382,12 @@ const generateSmartResponse = async (userMessage: string) => {
       destinations: undefined
     };
   }
-  
+
   // Destination/travel queries
   const travelMatch = message.match(/(推荐.*地方|旅行.*建议|去.*旅行|旅游.*推荐|热门.*目的地|周末.*游|短途.*游)/);
   if (travelMatch) {
     const destinations = await DestinationsService.searchDestinations('');
-    
+
     return {
       content: '我为您推荐几个热门的旅行目的地：',
       destinations: destinations.slice(0, 3),
@@ -382,7 +395,7 @@ const generateSmartResponse = async (userMessage: string) => {
       weather: undefined
     };
   }
-  
+
   // Currency queries
   const currencyMatch = message.match(/(汇率|换钱|currency|换算.*|.*多少钱)/);
   if (currencyMatch) {
@@ -393,10 +406,10 @@ const generateSmartResponse = async (userMessage: string) => {
       destinations: undefined
     };
   }
-  
+
   // Default AI response
   const aiResponse = await AIService.generateResponse(userMessage);
-  
+
   return {
     content: aiResponse,
     images: undefined,
@@ -414,6 +427,6 @@ const generateAIResponse = (userMessage: string): string => {
     "根据您的偏好，我为您准备了详细的行程规划。",
     "让我为您推荐一些适合的目的地和活动安排。",
   ];
-  
+
   return responses[Math.floor(Math.random() * responses.length)];
 };
