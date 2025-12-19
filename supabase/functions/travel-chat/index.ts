@@ -101,6 +101,7 @@ Deno.serve(async (req) => {
     
     If the user asks for specific recommendations (food, spots, guides), use the 'search_travel_info' tool to find "Xiaohongshu" style reviews.
     Always reply in the user's preferred language (likely Chinese).
+    IMPORTANT: Do not output internal thought tags or XML-like thinking process. Just output the final response.
     `;
 
         const messages = [
@@ -157,7 +158,43 @@ Deno.serve(async (req) => {
             }
         }
 
-        // 4. Final Generation (Streaming)
+        // 4. Save Memory (Before Streaming Response to guarantee execution)
+        if (userId && message.length > 2) {
+            try {
+                // Generate embedding
+                const embeddingRes = await fetch('https://api.deepseek.com/embeddings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: "deepseek-embedding",
+                        input: message
+                    })
+                });
+
+                if (embeddingRes.ok) {
+                    const data = await embeddingRes.json();
+                    const embedding = data.data?.[0]?.embedding;
+
+                    if (embedding) {
+                        // We do not await this insert to prevent blocking the UI *too* much, 
+                        // but we start it before the stream loop.
+                        // Actually, to be safe, we await it. It's better to be 200ms slower than broken.
+                        await supabase.from('user_memories').insert({
+                            user_id: userId,
+                            content: message,
+                            embedding: embedding
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error('Memory save failed:', e);
+            }
+        }
+
+        // 5. Final Generation (Streaming)
         const finalResponse = await fetch(DEEPSEEK_API_URL, {
             method: 'POST',
             headers: {
@@ -168,10 +205,11 @@ Deno.serve(async (req) => {
                 model: MODEL_NAME,
                 messages: finalMessages,
                 stream: true
+                // tools removed here to prevent recursive loop
             })
         });
 
-        // 5. Stream Handling to Frontend
+        // 6. Stream Handling to Frontend
         const reader = finalResponse.body?.getReader();
         if (!reader) throw new Error('No reader');
 
@@ -200,20 +238,13 @@ Deno.serve(async (req) => {
                                     controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'content', content })}\n\n`));
                                 }
                             } catch (e) {
-                                // ignore parse errors for partial chunks
+                                // ignore parse errors
                             }
                         }
                     }
                 }
                 controller.enqueue(encoder.encode('data: [DONE]\n\n'));
                 controller.close();
-
-                // 6. Save Memory (Async - Fire and forget for response speed, but ideally strictly awaited)
-                if (userId) {
-                    // Store the user message as a new memory if it's significant (simplified: always store for now)
-                    // Ideally we generate embedding for the USER message and store it.
-                    // We skip implementation here to keep the response fast, or do it via a separate background task.
-                }
             }
         });
 
