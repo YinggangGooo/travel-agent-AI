@@ -106,7 +106,6 @@ const ChatPage: React.FC = () => {
             {currentChat.messages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
-            {isTyping && <TypingIndicator />}
             <div ref={messagesEndRef} />
           </>
         )}
@@ -130,8 +129,8 @@ const ChatPage: React.FC = () => {
             onClick={handleSend}
             disabled={!input.trim()}
             className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 mb-1 mr-1 transition-all duration-200 ${input.trim()
-                ? 'bg-primary text-white hover:scale-105 active:scale-95 shadow-md'
-                : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-400 cursor-not-allowed'
+              ? 'bg-primary text-white hover:scale-105 active:scale-95 shadow-md'
+              : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-400 cursor-not-allowed'
               }`}
           >
             <ArrowUp className="w-5 h-5" strokeWidth={2.5} />

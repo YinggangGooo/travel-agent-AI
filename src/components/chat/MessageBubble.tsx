@@ -32,8 +32,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
               <div className="w-full h-full bg-gradient-to-br from-neutral-400 to-neutral-600" />
             </div>
           ) : (
-            <div className="w-9 h-9 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center shadow-lg transform -rotate-3">
-              <Bot className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 bg-gradient-to-br from-[#6366f1] to-[#a855f7] rounded-xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform duration-200">
+              <Sparkles className="w-5 h-5 text-white" />
             </div>
           )}
         </div>
@@ -41,8 +41,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
         {/* Message Content */}
         <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
           <div className={`rounded-2xl px-5 py-3.5 shadow-sm ${isUser
-              ? 'bg-primary text-white rounded-tr-none'
-              : 'bg-white dark:bg-[#1a1a1a] border border-neutral-100 dark:border-neutral-800 text-neutral-800 dark:text-neutral-100 rounded-tl-none'
+            ? 'bg-primary text-white rounded-tr-none'
+            : 'bg-white dark:bg-[#1a1a1a] border border-neutral-100 dark:border-neutral-800 text-neutral-800 dark:text-neutral-100 rounded-tl-none'
             }`}>
             {isGenerating && !message.content ? (
               <div className="flex items-center space-x-2 h-6">
