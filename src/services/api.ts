@@ -11,7 +11,7 @@ export class WeatherService {
       const geocodeResponse = await axios.get(
         `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=zh&format=json`
       );
-      
+
       if (!geocodeResponse.data.results || geocodeResponse.data.results.length === 0) {
         return null;
       }
@@ -39,9 +39,9 @@ export class WeatherService {
 
       // Get 7-day forecast
       const forecast = daily.time.slice(0, 7).map((date: string, index: number) => ({
-        day: index === 0 ? '今天' : 
-             index === 1 ? '明天' : 
-             new Date(date).toLocaleDateString('zh-CN', { weekday: 'short' }),
+        day: index === 0 ? '今天' :
+          index === 1 ? '明天' :
+            new Date(date).toLocaleDateString('zh-CN', { weekday: 'short' }),
         high: Math.round(daily.temperature_2m_max[index]),
         low: Math.round(daily.temperature_2m_min[index]),
         condition: this.getWeatherCondition(daily.weather_code[index]),
@@ -94,7 +94,7 @@ export class WeatherService {
       96: '雷暴伴有冰雹',
       99: '强雷暴伴有冰雹'
     };
-    
+
     return weatherMap[code] || '未知';
   }
 
@@ -124,7 +124,7 @@ export class WeatherService {
       96: '⛈️',
       99: '⛈️'
     };
-    
+
     return iconMap[code] || '☁️';
   }
 }
@@ -142,7 +142,7 @@ export class CurrencyService {
       if (response.data && response.data.rates) {
         return response.data.rates[to];
       }
-      
+
       return null;
     } catch (error) {
       console.error('Failed to fetch exchange rate:', error);
@@ -178,7 +178,7 @@ export class TimezoneService {
       day: '2-digit',
       weekday: 'long'
     };
-    
+
     return new Intl.DateTimeFormat('zh-CN', options).format(now);
   }
 
@@ -260,7 +260,7 @@ export class AIService {
    * @param onChunk - Callback for streaming chunks (required if stream=true)
    */
   static async generateResponse(
-    userMessage: string, 
+    userMessage: string,
     context?: any,
     stream: boolean = false,
     onChunk?: (chunk: string) => void
@@ -268,7 +268,7 @@ export class AIService {
     try {
       if (stream && onChunk) {
         // Streaming response using Server-Sent Events
-        return await this.generateStreamingResponse(userMessage, onChunk);
+        return await this.generateStreamingResponse(userMessage, context, onChunk);
       } else {
         // Non-streaming response
         const response = await fetch(this.edgeFunctionUrl, {
@@ -279,7 +279,9 @@ export class AIService {
           },
           body: JSON.stringify({
             message: userMessage,
-            stream: false
+            stream: false,
+            userId: context?.userId,
+            history: context?.history
           })
         });
 
@@ -293,12 +295,12 @@ export class AIService {
       }
     } catch (error) {
       console.error('AI Service Error:', error);
-      
+
       // Fallback response for errors
       if (error instanceof Error && error.message.includes('DEEPSEEK_API_KEY')) {
         return '抱歉,AI服务暂时不可用。请联系管理员配置API密钥。';
       }
-      
+
       return '抱歉,我现在遇到了一些技术问题。请稍后再试,或重新描述您的问题。';
     }
   }
@@ -310,6 +312,7 @@ export class AIService {
    */
   private static async generateStreamingResponse(
     userMessage: string,
+    context: any,
     onChunk: (chunk: string) => void
   ): Promise<string> {
     try {
@@ -321,7 +324,9 @@ export class AIService {
         },
         body: JSON.stringify({
           message: userMessage,
-          stream: true
+          stream: true,
+          userId: context?.userId,
+          history: context?.history
         })
       });
 
@@ -348,14 +353,14 @@ export class AIService {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
-            
+
             if (data === '[DONE]') {
               continue;
             }
 
             try {
               const parsed = JSON.parse(data);
-              
+
               if (parsed.type === 'tools') {
                 // Tools information (weather, exchange rate, etc.)
                 toolsInfo = `🔧 ${parsed.content}\n\n`;
