@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { Bot, Sparkles } from 'lucide-react';
 import { Message } from '../../contexts/ChatContext';
 import WeatherCard from '../weather/WeatherCard';
 import DestinationCard from '../destinations/DestinationCard';
@@ -10,99 +11,108 @@ interface MessageBubbleProps {
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   const isUser = message.type === 'user';
-  const timeString = message.timestamp.toLocaleTimeString([], { 
-    hour: '2-digit', 
-    minute: '2-digit' 
+  const isGenerating = message.status === 'sending' && !isUser;
+  const timeString = message.timestamp.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
   });
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
+      className={`flex mb-6 ${isUser ? 'justify-end' : 'justify-start'}`}
     >
-      <div className={`max-w-[70%] ${isUser ? 'order-2' : 'order-1'}`}>
-        {/* Avatar for AI messages */}
-        {!isUser && (
-          <div className="flex items-center space-x-2 mb-2">
-            <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-              <img 
-                src="/images/ai_avatar_3.jpg" 
-                alt="AI助手" 
-                className="w-full h-full rounded-full object-cover"
-              />
+      <div className={`flex max-w-[85%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+        {/* Avatar */}
+        <div className={`flex-shrink-0 ${isUser ? 'ml-3' : 'mr-3'}`}>
+          {isUser ? (
+            <div className="w-9 h-9 bg-neutral-200 dark:bg-neutral-700 rounded-full flex items-center justify-center overflow-hidden">
+              {/* User Avatar Placeholder */}
+              <div className="w-full h-full bg-gradient-to-br from-neutral-400 to-neutral-600" />
             </div>
-            <span className="text-sm text-neutral-600 dark:text-neutral-400">
-              旅行助手
-            </span>
-          </div>
-        )}
-
-        {/* Message Content */}
-        <div className={`rounded-2xl p-4 ${
-          isUser 
-            ? 'message-user text-white ml-auto' 
-            : 'message-ai text-neutral-900 dark:text-white'
-        }`}>
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">
-            {message.content}
-          </p>
-
-          {/* Images */}
-          {message.images && message.images.length > 0 && (
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {message.images.map((image, index) => (
-                <img
-                  key={index}
-                  src={image}
-                  alt={`用户上传的图片 ${index + 1}`}
-                  className="rounded-lg max-w-full h-auto"
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Weather Data */}
-          {message.weather && (
-            <div className="mt-3">
-              <WeatherCard weather={message.weather} compact />
-            </div>
-          )}
-
-          {/* Destinations */}
-          {message.destinations && message.destinations.length > 0 && (
-            <div className="mt-3 space-y-2">
-              {message.destinations.map((destination) => (
-                <DestinationCard 
-                  key={destination.id} 
-                  destination={destination} 
-                  compact 
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Message Status */}
-          {isUser && message.status && (
-            <div className="mt-2 flex justify-end">
-              <span className="text-xs opacity-70">
-                {timeString}
-                {message.status === 'sending' && ' · 发送中...'}
-                {message.status === 'sent' && ' · 已发送'}
-                {message.status === 'read' && ' · 已读'}
-              </span>
+          ) : (
+            <div className="w-9 h-9 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center shadow-lg transform -rotate-3">
+              <Bot className="w-5 h-5 text-white" />
             </div>
           )}
         </div>
 
-        {/* Time for AI messages */}
-        {!isUser && (
-          <div className="mt-1 text-center">
-            <span className="text-xs text-neutral-500 dark:text-neutral-400">
-              {timeString}
-            </span>
+        {/* Message Content */}
+        <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+          <div className={`rounded-2xl px-5 py-3.5 shadow-sm ${isUser
+              ? 'bg-primary text-white rounded-tr-none'
+              : 'bg-white dark:bg-[#1a1a1a] border border-neutral-100 dark:border-neutral-800 text-neutral-800 dark:text-neutral-100 rounded-tl-none'
+            }`}>
+            {isGenerating && !message.content ? (
+              <div className="flex items-center space-x-2 h-6">
+                <span className="text-sm font-medium text-primary">Generating</span>
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                >
+                  <Sparkles className="w-4 h-4 text-primary" />
+                </motion.div>
+              </div>
+            ) : (
+              <div className="prose prose-sm max-w-none dark:prose-invert">
+                <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
+                  {message.content || ' '}
+                </p>
+              </div>
+            )}
+
+            {/* Images */}
+            {message.images && message.images.length > 0 && (
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {message.images.map((image, index) => (
+                  <img
+                    key={index}
+                    src={image}
+                    alt={`用户上传的图片 ${index + 1}`}
+                    className="rounded-lg max-w-full h-auto border border-white/10"
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Weather Data */}
+            {message.weather && (
+              <div className="mt-3">
+                <WeatherCard weather={message.weather} compact />
+              </div>
+            )}
+
+            {/* Destinations */}
+            {message.destinations && message.destinations.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {message.destinations.map((destination) => (
+                  <DestinationCard
+                    key={destination.id}
+                    destination={destination}
+                    compact
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        )}
+
+          {/* Time & Status */}
+          <div className={`mt-1.5 flex items-center space-x-2 text-[11px] text-neutral-400 ${isUser ? 'justify-end' : 'justify-start'}`}>
+            <span>{timeString}</span>
+            {isUser && message.status && (
+              <span>
+                {message.status === 'sending' && '• 发送中'}
+                {message.status === 'sent' && '• 已发送'}
+              </span>
+            )}
+            {isGenerating && !isUser && (
+              <span className="flex items-center text-primary">
+                • thinking...
+              </span>
+            )}
+          </div>
+        </div>
       </div>
     </motion.div>
   );

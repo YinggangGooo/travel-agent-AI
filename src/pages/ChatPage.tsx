@@ -1,11 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Send, Paperclip, Image as ImageIcon, MapPin, Cloud, Download } from 'lucide-react';
-import { useChat, Message } from '../contexts/ChatContext';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Send, Image as ImageIcon, MapPin, Download, ArrowUp } from 'lucide-react';
+import { useChat } from '../contexts/ChatContext';
 import MessageBubble from '../components/chat/MessageBubble';
 import TypingIndicator from '../components/chat/TypingIndicator';
-import WeatherCard from '../components/weather/WeatherCard';
-import DestinationCard from '../components/destinations/DestinationCard';
 import ImageUploader from '../components/features/ImageUploader';
 import ExportModal from '../components/export/ExportModal';
 import { conversationStarters } from '../data/mockData';
@@ -40,7 +38,7 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -116,51 +114,46 @@ const ChatPage: React.FC = () => {
 
       {/* Input Area */}
       <div className="p-4 border-t border-white/15">
-        <div className="glass-card p-4 rounded-2xl">
-          <div className="flex items-end space-x-3">
-            {/* Text Input */}
-            <div className="flex-1 relative bg-white/5 rounded-2xl border border-white/10 focus-within:border-primary/50 focus-within:bg-white/10 transition-all duration-200">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="输入您的旅行问题..."
-                className="w-full px-4 py-3 bg-transparent resize-none rounded-2xl text-neutral-900 dark:text-white placeholder-neutral-500 focus:outline-none max-h-[200px] overflow-y-auto scrollbar-hide"
-                rows={1}
-                style={{ minHeight: '48px' }}
-              />
-            </div>
+        <div className="max-w-3xl mx-auto bg-white dark:bg-neutral-800 rounded-[26px] p-2 pr-2 shadow-sm border border-neutral-200 dark:border-white/10 focus-within:shadow-md transition-all duration-300 flex items-end">
 
-            {/* Send Button */}
-            <button
-              onClick={handleSend}
-              disabled={!input.trim()}
-              className={`p-3 rounded-xl transition-all duration-200 flex items-center justify-center shrink-0 ${input.trim()
-                  ? 'bg-primary text-white shadow-lg shadow-primary/20 hover:scale-105 active:scale-95'
-                  : 'bg-white/10 text-neutral-400 cursor-not-allowed hidden'
-                }`}
-            >
-              <Send className="w-5 h-5" />
-            </button>
-          </div>
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="输入您的旅行问题..."
+            className="flex-1 bg-transparent px-4 py-3 min-h-[44px] max-h-[200px] resize-none text-neutral-900 dark:text-white placeholder-neutral-500 focus:outline-none scrollbar-hide"
+            rows={1}
+          />
 
-
-          {/* Image Uploader */}
-          {showImageUploader && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mt-4 pt-4 border-t border-white/10"
-            >
-              <ImageUploader onImageSelect={(imageUrl) => {
-                sendMessage('查看这张图片', [imageUrl]);
-                setShowImageUploader(false);
-              }} />
-            </motion.div>
-          )}
+          <button
+            onClick={handleSend}
+            disabled={!input.trim()}
+            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 mb-1 mr-1 transition-all duration-200 ${input.trim()
+                ? 'bg-primary text-white hover:scale-105 active:scale-95 shadow-md'
+                : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-400 cursor-not-allowed'
+              }`}
+          >
+            <ArrowUp className="w-5 h-5" strokeWidth={2.5} />
+          </button>
         </div>
+
+        {/* Caption */}
+        <div className="text-center mt-3">
+          <p className="text-[11px] text-neutral-400 dark:text-neutral-500">
+            AI 可能产生错误信息，请核对重要事实
+          </p>
+        </div>
+
+        {/* Hidden Image Uploader Logic (Preserved but UI hidden as per request to simplify) */}
+        {showImageUploader && (
+          <div className="hidden">
+            <ImageUploader onImageSelect={(imageUrl) => {
+              sendMessage('查看这张图片', [imageUrl]);
+              setShowImageUploader(false);
+            }} />
+          </div>
+        )}
       </div>
 
       {/* Export Button - Fixed position when there are messages */}

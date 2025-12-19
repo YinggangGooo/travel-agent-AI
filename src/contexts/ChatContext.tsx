@@ -79,14 +79,25 @@ interface ChatProviderProps {
 }
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
-  const { user } = useAuth(); // Get current user for memory
+  const { user } = useAuth();
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChat, setCurrentChat] = useState<Chat | null>(null);
   const [isTyping, setIsTyping] = useState(false);
 
+  // Helper to safely update a specific chat by ID
+  const updateChatById = (chatId: string, updater: (chat: Chat) => Chat) => {
+    setChats(prevChats =>
+      prevChats.map(chat =>
+        chat.id === chatId ? updater(chat) : chat
+      )
+    );
+    // Also update currentChat if it matches
+    setCurrentChat(prev => (prev?.id === chatId ? updater(prev) : prev));
+  };
+
   const createNewChat = (): string => {
     const newChat: Chat = {
-      id: `chat-${Date.now()}`,
+      id: `chat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // More robust ID
       title: '新对话',
       messages: [],
       createdAt: new Date(),
@@ -108,13 +119,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   };
 
   const sendMessage = async (content: string, images?: string[]) => {
-    if (!currentChat) {
-      createNewChat();
-      return;
+    // 1. Ensure we have a chat
+    let targetChatId = currentChat?.id;
+    if (!targetChatId) {
+      targetChatId = createNewChat();
     }
 
     const userMessage: Message = {
-      id: `msg-${Date.now()}`,
+      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       type: 'user',
       content,
       timestamp: new Date(),
@@ -122,53 +134,35 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       status: 'sending',
     };
 
-    // Update current chat
-    setCurrentChat(prev => {
-      if (!prev) return null;
-      const updatedChat = {
-        ...prev,
-        messages: [...prev.messages, userMessage],
-        updatedAt: new Date(),
-      };
+    // 2. Add User Message
+    updateChatById(targetChatId!, chat => ({
+      ...chat,
+      messages: [...chat.messages, userMessage],
+      updatedAt: new Date(),
+    }));
 
-      // Update chats list
-      setChats(prevChats =>
-        prevChats.map(chat =>
-          chat.id === prev.id ? updatedChat : chat
-        )
-      );
-
-      return updatedChat;
-    });
-
-    // Set typing indicator
     setIsTyping(true);
 
     try {
-      // Create a placeholder AI message for streaming
-      const aiMessageId = `ai-msg-${Date.now()}`;
-      let streamedContent = '';
-
+      // 3. Create Placeholder AI Message
+      const aiMessageId = `ai-msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const placeholderMessage: Message = {
         id: aiMessageId,
         type: 'ai',
-        content: '',
+        content: '', // Start empty
         timestamp: new Date(),
-        status: 'sending',
+        status: 'sending', // generating state
       };
 
-      // Add placeholder message
-      setCurrentChat(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          messages: [...prev.messages, placeholderMessage],
-          updatedAt: new Date(),
-        };
-      });
+      updateChatById(targetChatId!, chat => ({
+        ...chat,
+        messages: [...chat.messages, placeholderMessage],
+        updatedAt: new Date(),
+      }));
 
-      // Build context for memory and history
-      const conversationHistory = currentChat?.messages.slice(-10).map(msg => ({
+      // 4. Prepare Context
+      const activeChat = chats.find(c => c.id === targetChatId) || currentChat;
+      const conversationHistory = activeChat?.messages.slice(-10).map(msg => ({
         role: msg.type === 'user' ? 'user' : 'assistant',
         content: msg.content
       })) || [];
@@ -178,136 +172,94 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         history: conversationHistory
       };
 
-      // Generate AI response with streaming
+      let streamedContent = '';
+
+      // 5. Call AI (Streaming) - Targeting specific ChatID
       await AIService.generateResponse(
         content,
         context,
-        true, // Enable streaming
+        true,
         (chunk: string) => {
-          // Update message content as chunks arrive
           streamedContent += chunk;
 
-          setCurrentChat(prev => {
-            if (!prev) return null;
-            const updatedMessages = prev.messages.map(msg =>
-              msg.id === aiMessageId
-                ? { ...msg, content: streamedContent, status: 'sent' as const }
-                : msg
-            );
+          updateChatById(targetChatId!, chat => {
+            // Only update title for the first few chunks of the FIRST message
+            const shouldUpdateTitle = chat.messages.length <= 2 && streamedContent.length > 5 && streamedContent.length < 50;
 
-            const updatedChat = {
-              ...prev,
-              messages: updatedMessages,
-              updatedAt: new Date(),
-              title: prev.messages.length <= 1 ? content.substring(0, 30) + (content.length > 30 ? '...' : '') : prev.title,
+            return {
+              ...chat,
+              messages: chat.messages.map(msg =>
+                msg.id === aiMessageId
+                  ? { ...msg, content: streamedContent, status: 'sending' as const }
+                  : msg
+              ),
+              // Auto-title update (simple version)
+              title: shouldUpdateTitle ? (content.substring(0, 15) + (content.length > 15 ? '...' : '')) : chat.title
             };
-
-            setChats(prevChats =>
-              prevChats.map(chat =>
-                chat.id === prev.id ? updatedChat : chat
-              )
-            );
-
-            return updatedChat;
           });
         }
       );
 
-      // Check if message needs weather or destination data
-      const aiResponse = await generateSmartResponse(content);
+      // 6. Check for Special Queries (Weather, etc) WITHOUT calling LLM again
+      // Only check simple regex tools that don't need another API call
+      const specialData = await checkLocalTools(content); // Renamed helper
 
-      if (aiResponse.weather || aiResponse.destinations) {
-        // Update with additional data
-        setCurrentChat(prev => {
-          if (!prev) return null;
-          const updatedMessages = prev.messages.map(msg =>
-            msg.id === aiMessageId
-              ? {
-                ...msg,
-                weather: aiResponse.weather,
-                destinations: aiResponse.destinations,
-                status: 'sent' as const
-              }
-              : msg
-          );
-
-          const updatedChat = {
-            ...prev,
-            messages: updatedMessages,
-            updatedAt: new Date(),
-          };
-
-          setChats(prevChats =>
-            prevChats.map(chat =>
-              chat.id === prev.id ? updatedChat : chat
-            )
-          );
-
-          return updatedChat;
-        });
-      }
+      updateChatById(targetChatId!, chat => ({
+        ...chat,
+        messages: chat.messages.map(msg =>
+          msg.id === aiMessageId
+            ? {
+              ...msg,
+              content: streamedContent, // Ensure final content is set
+              status: 'sent',
+              weather: specialData?.weather,
+              destinations: specialData?.destinations
+            }
+            : msg
+        )
+      }));
 
     } catch (error) {
       console.error('Error generating AI response:', error);
-
-      // Fallback response
+      // Add error message to specific chat
       const fallbackMessage: Message = {
-        id: `ai-msg-${Date.now()}`,
+        id: `err-${Date.now()}`,
         type: 'ai',
-        content: '抱歉，我现在遇到了一些技术问题。请稍后再试，或重新描述您的问题。',
+        content: '抱歉，遇到了一些连接问题。请稍后再试。',
         timestamp: new Date(),
         status: 'sent',
       };
-
-      setCurrentChat(prev => {
-        if (!prev) return null;
-        const updatedChat = {
-          ...prev,
-          messages: [...prev.messages, fallbackMessage],
-          updatedAt: new Date(),
-        };
-
-        setChats(prevChats =>
-          prevChats.map(chat =>
-            chat.id === prev.id ? updatedChat : chat
-          )
-        );
-
-        return updatedChat;
-      });
+      updateChatById(targetChatId!, chat => ({
+        ...chat,
+        messages: [...chat.messages, fallbackMessage]
+      }));
     } finally {
       setIsTyping(false);
     }
   };
 
   const toggleFavorite = (chatId: string) => {
-    setChats(prev =>
-      prev.map(chat =>
-        chat.id === chatId ? { ...chat, isFavorite: !chat.isFavorite } : chat
-      )
-    );
+    updateChatById(chatId, chat => ({ ...chat, isFavorite: !chat.isFavorite }));
   };
 
   const deleteChat = (chatId: string) => {
     setChats(prev => prev.filter(chat => chat.id !== chatId));
-    if (currentChat?.id === chatId) {
-      setCurrentChat(null);
-    }
+    setCurrentChat(prev => (prev?.id === chatId ? null : prev));
   };
 
   const renameChat = (chatId: string, newTitle: string) => {
-    setChats(prev =>
-      prev.map(chat =>
-        chat.id === chatId ? { ...chat, title: newTitle } : chat
-      )
-    );
-    // If renaming current chat, update it too
-    if (currentChat?.id === chatId) {
-      setCurrentChat(prev => prev ? { ...prev, title: newTitle } : null);
-    }
+    updateChatById(chatId, chat => ({ ...chat, title: newTitle }));
   };
 
-  // Load saved chats from localStorage
+  const searchChats = (query: string): Chat[] => {
+    if (!query.trim()) return chats;
+    return chats.filter(chat =>
+      chat.title.toLowerCase().includes(query.toLowerCase()) ||
+      chat.messages.some(msg => msg.content.toLowerCase().includes(query.toLowerCase()))
+    );
+  };
+
+  // Persistence logic (Keep existing useEffects)
   useEffect(() => {
     try {
       const savedChats = localStorage.getItem('travelAgent_chats');
@@ -323,114 +275,50 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         }));
         setChats(parsedChats);
       }
-    } catch (error) {
-      console.error('Failed to load saved chats:', error);
-    }
+    } catch (error) { console.error(error); }
   }, []);
 
-  // Save chats to localStorage whenever they change
   useEffect(() => {
     if (chats.length > 0) {
-      try {
-        localStorage.setItem('travelAgent_chats', JSON.stringify(chats));
-      } catch (error) {
-        console.error('Failed to save chats:', error);
-      }
+      localStorage.setItem('travelAgent_chats', JSON.stringify(chats));
     }
   }, [chats]);
 
-  const searchChats = (query: string): Chat[] => {
-    if (!query.trim()) return chats;
-
-    return chats.filter(chat =>
-      chat.title.toLowerCase().includes(query.toLowerCase()) ||
-      chat.messages.some(msg => msg.content.toLowerCase().includes(query.toLowerCase()))
-    );
-  };
-
   return (
     <ChatContext.Provider value={{
-      chats,
-      currentChat,
-      isTyping,
-      createNewChat,
-      selectChat,
-      sendMessage,
-      toggleFavorite,
-      deleteChat,
-      renameChat, // Added
-      searchChats,
+      chats, currentChat, isTyping, createNewChat, selectChat,
+      sendMessage, toggleFavorite, deleteChat, renameChat, searchChats,
     }}>
       {children}
     </ChatContext.Provider>
   );
 };
 
-// Smart response generator with real API integration
-const generateSmartResponse = async (userMessage: string) => {
+// Simplified local tools checker (No extra LLM call)
+const checkLocalTools = async (userMessage: string) => {
   const message = userMessage.toLowerCase();
 
-  // Weather queries
+  // Weather
   const weatherMatch = message.match(/(.*城市.*天气|.*天气.*查询|.*下雨.*|.*晴天.*|.*今天.*天气|明天.*天气)/);
   if (weatherMatch) {
     const cityMatch = userMessage.match(/(?:北京|上海|广州|深圳|杭州|南京|武汉|成都|西安|重庆|天津|青岛|大连|厦门|昆明|贵阳|拉萨|银川|西宁|乌鲁木齐|呼和浩特|南宁|海口|福州|合肥|南昌|郑州|太原|长春|沈阳|哈尔滨|石家庄|济南|兰州|合肥)/) || userMessage.match(/for (\w+)/);
-
     if (cityMatch) {
       const city = cityMatch[0].replace('for ', '');
       const weather = await WeatherService.getCurrentWeather(city);
-
-      if (weather) {
-        return {
-          content: `为您查询到${weather.location}的天气信息：当前温度 ${weather.temperature}°C，${weather.condition}，湿度 ${weather.humidity}%，风速 ${weather.windSpeed} km/h。未来几天都有不错的天气，建议您根据天气情况安排出行！`,
-          weather,
-          images: undefined,
-          destinations: undefined
-        };
-      }
+      if (weather) return { weather };
     }
-
-    return {
-      content: '请告诉我您想查询哪个城市的天气信息？例如"北京天气"或"上海今天天气如何？"',
-      images: undefined,
-      weather: undefined,
-      destinations: undefined
-    };
   }
 
-  // Destination/travel queries
+  // Destinations
   const travelMatch = message.match(/(推荐.*地方|旅行.*建议|去.*旅行|旅游.*推荐|热门.*目的地|周末.*游|短途.*游)/);
   if (travelMatch) {
     const destinations = await DestinationsService.searchDestinations('');
-
-    return {
-      content: '我为您推荐几个热门的旅行目的地：',
-      destinations: destinations.slice(0, 3),
-      images: undefined,
-      weather: undefined
-    };
+    if (destinations) return { destinations: destinations.slice(0, 3) };
   }
 
-  // Currency queries
-  const currencyMatch = message.match(/(汇率|换钱|currency|换算.*|.*多少钱)/);
-  if (currencyMatch) {
-    return {
-      content: '我可以帮您查询汇率信息。请告诉我您需要转换的货币和金额，例如"100美元等于多少人民币？"',
-      images: undefined,
-      weather: undefined,
-      destinations: undefined
-    };
-  }
-
-  // Default AI response
-  const aiResponse = await AIService.generateResponse(userMessage);
-
-  return {
-    content: aiResponse,
-    images: undefined,
-    weather: undefined,
-    destinations: undefined
-  };
+  return null;
 };
+
 
 // Legacy function for backwards compatibility
 const generateAIResponse = (userMessage: string): string => {
