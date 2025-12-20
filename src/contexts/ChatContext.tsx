@@ -61,6 +61,7 @@ interface ChatContextType {
   toggleFavorite: (chatId: string) => void;
   deleteChat: (chatId: string) => void;
   renameChat: (chatId: string, newTitle: string) => void; // Added renameChat
+  stopGeneration: () => void;
   searchChats: (query: string) => Chat[];
 }
 
@@ -83,6 +84,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChat, setCurrentChat] = useState<Chat | null>(null);
   const [isTyping, setIsTyping] = useState(false);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
 
   // Helper to safely update a specific chat by ID
   const updateChatById = (chatId: string, updater: (chat: Chat) => Chat) => {
@@ -97,7 +99,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   const createNewChat = (): string => {
     const newChat: Chat = {
-      id: `chat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // More robust ID
+      id: `chat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       title: '新对话',
       messages: [],
       createdAt: new Date(),
@@ -115,6 +117,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     const chat = chats.find(c => c.id === chatId);
     if (chat) {
       setCurrentChat(chat);
+      // Reset typing state if switching chats
+      setIsTyping(false);
+      abortControllerRef.current?.abort();
+    }
+  };
+
+  const stopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsTyping(false);
     }
   };
 
@@ -142,6 +155,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     }));
 
     setIsTyping(true);
+
+    // Initialize AbortController
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
 
     try {
       // 3. Create Placeholder AI Message
@@ -197,7 +216,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
               title: shouldUpdateTitle ? (content.substring(0, 15) + (content.length > 15 ? '...' : '')) : chat.title
             };
           });
-        }
+        },
+        abortControllerRef.current.signal
       );
 
       // 6. Check for Special Queries (Weather, etc) WITHOUT calling LLM again
@@ -219,7 +239,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         )
       }));
 
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        // Handle abort gracefully
+        updateChatById(targetChatId!, chat => ({
+          ...chat,
+          messages: chat.messages.map(msg =>
+            msg.type === 'ai' && msg.content === ''
+              ? { ...msg, content: '已停止生成。', status: 'sent' } // Or separate 'interrupted' status
+              : msg
+          )
+        }));
+        return;
+      }
+
       console.error('Error generating AI response:', error);
       // Add error message to specific chat
       const fallbackMessage: Message = {
@@ -235,6 +268,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       }));
     } finally {
       setIsTyping(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -243,8 +277,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   };
 
   const deleteChat = (chatId: string) => {
-    setChats(prev => prev.filter(chat => chat.id !== chatId));
-    setCurrentChat(prev => (prev?.id === chatId ? null : prev));
+    // Stop any active generation if deleting current chat
+    if (currentChat?.id === chatId) {
+      stopGeneration();
+    }
+
+    const newChats = chats.filter(chat => chat.id !== chatId);
+    setChats(newChats);
+
+    // If we deleted the current chat, decide what to select next
+    if (currentChat?.id === chatId) {
+      // Don't auto-create here. Just set to null.
+      // ChatPage will handle the empty state.
+      setCurrentChat(null);
+    }
   };
 
   const renameChat = (chatId: string, newTitle: string) => {
@@ -286,8 +332,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   return (
     <ChatContext.Provider value={{
-      chats, currentChat, isTyping, createNewChat, selectChat,
-      sendMessage, toggleFavorite, deleteChat, renameChat, searchChats,
+      chats,
+      currentChat,
+      isTyping,
+      createNewChat,
+      selectChat,
+      sendMessage,
+      toggleFavorite,
+      deleteChat,
+      renameChat,
+      stopGeneration,
+      searchChats: (query) => chats.filter(c => c.title.includes(query) || c.messages.some(m => m.content.includes(query)))
     }}>
       {children}
     </ChatContext.Provider>

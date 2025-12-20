@@ -25,13 +25,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
     >
       <div className={`flex max-w-[85%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
         {/* Avatar */}
-        <div className={`flex-shrink-0 ${isUser ? 'ml-3' : 'mr-3'}`}>
-          {isUser ? (
-            <div className="w-9 h-9 bg-neutral-200 dark:bg-neutral-700 rounded-full flex items-center justify-center overflow-hidden">
-              {/* User Avatar Placeholder */}
-              <div className="w-full h-full bg-gradient-to-br from-neutral-400 to-neutral-600" />
-            </div>
-          ) : (
+        <div className={`flex-shrink-0 ${isUser ? 'ml-0 hidden' : 'mr-3'}`}>
+          {!isUser && (
             <div className="w-9 h-9 bg-gradient-to-br from-[#6366f1] to-[#a855f7] rounded-xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform duration-200">
               <Sparkles className="w-5 h-5 text-white" />
             </div>

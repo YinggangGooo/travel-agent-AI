@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageSquare,
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useChat } from '../../contexts/ChatContext';
+import SettingsModal from '../settings/SettingsModal';
 
 interface SidebarProps {
   onClose?: () => void;
@@ -31,17 +32,17 @@ const Sidebar: React.FC<SidebarProps> = ({
   onToggle
 }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
-  // Add renameChat to destructuring
   const { chats, currentChat, selectChat, createNewChat, toggleFavorite, deleteChat, renameChat } = useChat();
 
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
   const editInputRef = useRef<HTMLInputElement>(null);
 
   const isActive = (path: string) => location.pathname === path;
 
-  // Cleaned up nav items (Removed 'New Chat' and 'Settings' as they are handled elsewhere)
   const navItems = [
     { path: '/history', icon: History, label: '历史记录' },
   ];
@@ -116,6 +117,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <button
           onClick={() => {
             createNewChat();
+            navigate('/');
             if (!isOpen && onToggle) onToggle();
             handleLinkClick();
           }}
@@ -128,15 +130,14 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Chat List */}
       <div className="flex-1 overflow-y-auto px-4 space-y-2 scrollbar-thin pb-4">
-        {/* Navigation Items */}
         {navItems.map((item) => (
           <Link
             key={item.path}
             to={item.path}
             onClick={handleLinkClick}
             className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${isActive(item.path)
-                ? 'bg-white/10 text-primary font-medium border border-primary/20'
-                : 'text-neutral-600 dark:text-neutral-400 hover:bg-white/5 hover:text-neutral-900 dark:hover:text-white'
+              ? 'bg-white/10 text-primary font-medium border border-primary/20'
+              : 'text-neutral-600 dark:text-neutral-400 hover:bg-white/5 hover:text-neutral-900 dark:hover:text-white'
               }`}
           >
             <item.icon className="w-5 h-5" />
@@ -154,12 +155,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                 key={chat.id}
                 onClick={() => {
                   selectChat(chat.id);
+                  navigate('/');
                   if (!isOpen && onToggle) onToggle();
                   handleLinkClick();
                 }}
                 className={`group relative flex items-center p-3 rounded-xl cursor-pointer transition-all border border-transparent ${currentChat?.id === chat.id
-                    ? 'bg-primary/5 border-primary/10 shadow-sm'
-                    : 'hover:bg-white/5 hover:border-white/10'
+                  ? 'bg-primary/5 border-primary/10 shadow-sm'
+                  : 'hover:bg-white/5 hover:border-white/10'
                   }`}
               >
                 <MessageSquare className={`w-4 h-4 mr-3 shrink-0 ${currentChat?.id === chat.id ? 'text-primary' : 'text-neutral-400'
@@ -234,17 +236,18 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Bottom Settings */}
       <div className="p-4 border-t border-white/10 shrink-0">
-        <Link
-          to="/settings"
-          onClick={handleLinkClick}
-          className="flex items-center space-x-3 px-4 py-3 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-white/10 hover:text-neutral-900 dark:hover:text-white transition-all group"
+        <button
+          onClick={() => setShowSettings(true)}
+          className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-white/10 hover:text-neutral-900 dark:hover:text-white transition-all group"
         >
           <div className="p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 group-hover:bg-primary/10 transition-colors">
             <Settings className="w-5 h-5 group-hover:text-primary transition-colors" />
           </div>
           <span className="font-medium">全局设置</span>
-        </Link>
+        </button>
       </div>
+
+      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
     </motion.div>
   );
 };

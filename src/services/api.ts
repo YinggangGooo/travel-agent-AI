@@ -258,17 +258,19 @@ export class AIService {
    * @param context - Optional context (not used yet)
    * @param stream - Whether to use streaming response (default: false)
    * @param onChunk - Callback for streaming chunks (required if stream=true)
+   * @param signal - AbortSignal to cancel the request
    */
   static async generateResponse(
     userMessage: string,
     context?: any,
     stream: boolean = false,
-    onChunk?: (chunk: string) => void
+    onChunk?: (chunk: string) => void,
+    signal?: AbortSignal
   ): Promise<string> {
     try {
       if (stream && onChunk) {
         // Streaming response using Server-Sent Events
-        return await this.generateStreamingResponse(userMessage, context, onChunk);
+        return await this.generateStreamingResponse(userMessage, context, onChunk, signal);
       } else {
         // Non-streaming response
         const response = await fetch(this.edgeFunctionUrl, {
@@ -282,7 +284,8 @@ export class AIService {
             stream: false,
             userId: context?.userId,
             history: context?.history
-          })
+          }),
+          signal
         });
 
         if (!response.ok) {
@@ -293,7 +296,11 @@ export class AIService {
         const data = await response.json();
         return data.content || '抱歉,我现在无法生成回复。';
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('Request aborted');
+        return ''; // Return empty string on abort
+      }
       console.error('AI Service Error:', error);
 
       // Fallback response for errors
@@ -309,11 +316,13 @@ export class AIService {
    * Generate streaming AI response
    * @param userMessage - User's input message
    * @param onChunk - Callback for each chunk of content
+   * @param signal - AbortSignal
    */
   private static async generateStreamingResponse(
     userMessage: string,
     context: any,
-    onChunk: (chunk: string) => void
+    onChunk: (chunk: string) => void,
+    signal?: AbortSignal
   ): Promise<string> {
     try {
       const response = await fetch(this.edgeFunctionUrl, {
@@ -327,7 +336,8 @@ export class AIService {
           stream: true,
           userId: context?.userId,
           history: context?.history
-        })
+        }),
+        signal
       });
 
       if (!response.ok) {
@@ -339,11 +349,20 @@ export class AIService {
         throw new Error('Failed to get stream reader');
       }
 
+      // Handle abort manually for stream reader if necessary, 
+      // but fetch signal usually handles closing the body stream.
+      // We can also check signal.aborted in the loop.
+
       const decoder = new TextDecoder();
       let fullContent = '';
       let toolsInfo = '';
 
       while (true) {
+        if (signal?.aborted) {
+          reader.cancel();
+          break;
+        }
+
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -378,7 +397,8 @@ export class AIService {
       }
 
       return toolsInfo + fullContent;
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError') throw error;
       console.error('Streaming Error:', error);
       throw error;
     }

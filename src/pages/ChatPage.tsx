@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Image as ImageIcon, MapPin, Download, ArrowUp } from 'lucide-react';
+import { Send, Image as ImageIcon, MapPin, Download, ArrowUp, Square, MessageSquarePlus } from 'lucide-react';
 import { useChat } from '../contexts/ChatContext';
 import MessageBubble from '../components/chat/MessageBubble';
 import TypingIndicator from '../components/chat/TypingIndicator';
@@ -9,7 +9,7 @@ import ExportModal from '../components/export/ExportModal';
 import { conversationStarters } from '../data/mockData';
 
 const ChatPage: React.FC = () => {
-  const { currentChat, sendMessage, isTyping, createNewChat } = useChat();
+  const { currentChat, sendMessage, isTyping, createNewChat, stopGeneration } = useChat();
   const [input, setInput] = useState('');
   const [showImageUploader, setShowImageUploader] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -21,12 +21,7 @@ const ChatPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentChat?.messages, isTyping]);
 
-  useEffect(() => {
-    // Create new chat if none exists
-    if (!currentChat) {
-      createNewChat();
-    }
-  }, [currentChat, createNewChat]);
+  // Removed auto-creation effect to allow empty state
 
   const handleSend = () => {
     if (input.trim()) {
@@ -59,10 +54,24 @@ const ChatPage: React.FC = () => {
 
   if (!currentChat) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="glass-card p-8 rounded-2xl text-center">
-          <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-neutral-600 dark:text-neutral-400">加载中...</p>
+      <div className="flex flex-col items-center justify-center h-screen p-4 text-center">
+        <div className="glass-card p-10 rounded-3xl max-w-md w-full shadow-xl animate-in fade-in zoom-in duration-300">
+          <div className="w-20 h-20 bg-gradient-to-br from-primary to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-primary/20">
+            <ImageIcon className="w-10 h-10 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-3">
+            欢迎回来
+          </h2>
+          <p className="text-neutral-600 dark:text-neutral-400 mb-8 leading-relaxed">
+            我是您的 AI 旅行助手。我可以帮您规划行程、查询天气、推荐景点。让我们开始一个新的旅程吧！
+          </p>
+          <button
+            onClick={() => createNewChat()}
+            className="w-full btn-primary py-4 rounded-xl flex items-center justify-center space-x-2 text-lg font-medium shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all hover:-translate-y-0.5"
+          >
+            <MessageSquarePlus className="w-5 h-5" />
+            <span>开始新对话</span>
+          </button>
         </div>
       </div>
     );
@@ -83,10 +92,10 @@ const ChatPage: React.FC = () => {
                 <ImageIcon className="w-8 h-8 text-primary" />
               </div>
               <h2 className="text-2xl font-semibold text-neutral-900 dark:text-white mb-2">
-                欢迎使用旅行助手
+                新对话
               </h2>
               <p className="text-neutral-600 dark:text-neutral-400 mb-6">
-                我可以帮您规划旅行、查询天气、推荐景点。开始对话吧！
+                有什么我可以帮您的吗？试试问我：
               </p>
               <div className="flex flex-wrap gap-2 justify-center">
                 {conversationStarters.slice(0, 3).map((starter, index) => (
@@ -125,16 +134,26 @@ const ChatPage: React.FC = () => {
             rows={1}
           />
 
-          <button
-            onClick={handleSend}
-            disabled={!input.trim()}
-            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 mb-1 mr-1 transition-all duration-200 ${input.trim()
-              ? 'bg-primary text-white hover:scale-105 active:scale-95 shadow-md'
-              : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-400 cursor-not-allowed'
-              }`}
-          >
-            <ArrowUp className="w-5 h-5" strokeWidth={2.5} />
-          </button>
+          {isTyping ? (
+            <button
+              onClick={stopGeneration}
+              className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 mb-1 mr-1 transition-all duration-200 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:scale-105 active:scale-95 shadow-md"
+              title="停止生成"
+            >
+              <Square className="w-4 h-4 fill-current" strokeWidth={2.5} />
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim()}
+              className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 mb-1 mr-1 transition-all duration-200 ${input.trim()
+                ? 'bg-primary text-white hover:scale-105 active:scale-95 shadow-md'
+                : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-400 cursor-not-allowed'
+                }`}
+            >
+              <ArrowUp className="w-5 h-5" strokeWidth={2.5} />
+            </button>
+          )}
         </div>
 
         {/* Caption */}
